@@ -42,8 +42,8 @@ jobs:
         run: |
           set -euo pipefail
           cat > "${RUNNER_TEMP}/firebase-service-account.json" <<'EOF'
-${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-EOF
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EOF
           chmod 600 "${RUNNER_TEMP}/firebase-service-account.json"
 
       - name: Deploy to Firebase Hosting
