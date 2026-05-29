@@ -38,10 +38,17 @@ jobs:
       - name: Build static dashboard
         run: npm run build:web
 
+      - name: Write Firebase service account
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/firebase-service-account.json" <<'EOF'
+${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+EOF
+          chmod 600 "${RUNNER_TEMP}/firebase-service-account.json"
+
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
-          channelId: live
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          set -euo pipefail
+          npx firebase-tools@15.19.0 deploy --only hosting --project "${FIREBASE_PROJECT_ID}" --non-interactive
