@@ -91,36 +91,71 @@ export function useBotDashboard(userId?: string) {
     queryKey: ["signals", userId, currentMode],
     enabled,
     refetchInterval: 15000,
-    queryFn: () =>
-      fetchSingle(
-        client
+    queryFn: async () => {
+      const scoped = await client
         .from("signals")
         .select("*")
         .eq("user_id", userId)
         .eq("mode", currentMode)
         .order("generated_at", { ascending: false })
-        .limit(15),
-        (value) => signalSchema.array().parse(value),
-        "signals"
-      )
+        .limit(15);
+
+      if (!scoped.error) {
+        return signalSchema.array().parse(scoped.data ?? []);
+      }
+
+      const legacy = await client
+        .from("signals")
+        .select("*")
+        .eq("user_id", userId)
+        .order("generated_at", { ascending: false })
+        .limit(15);
+
+      if (legacy.error) {
+        throw new Error(`signals: ${legacy.error.message}`);
+      }
+
+      return signalSchema.array().parse((legacy.data ?? []).map((row) => ({ mode: currentMode, ...row })));
+    }
   });
 
   const fillsQuery = useQuery({
     queryKey: ["fills", userId, currentMode],
     enabled,
     refetchInterval: 15000,
-    queryFn: () =>
-      fetchSingle(
-        client
-          .from("fills")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("mode", currentMode)
-          .order("executed_at", { ascending: false })
-          .limit(15),
-        (value) => fillSchema.array().parse(value),
-        "fills"
-      )
+    queryFn: async () => {
+      const scoped = await client
+        .from("fills")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("mode", currentMode)
+        .order("executed_at", { ascending: false })
+        .limit(15);
+
+      if (!scoped.error) {
+        return fillSchema.array().parse(scoped.data ?? []);
+      }
+
+      const legacy = await client
+        .from("fills")
+        .select("id,user_id,order_id,symbol,side,executed_at,quantity,price,commission_asset,commission_amount,quote_amount,orders!inner(broker_mode)")
+        .eq("user_id", userId)
+        .eq("orders.broker_mode", currentMode)
+        .order("executed_at", { ascending: false })
+        .limit(15);
+
+      if (legacy.error) {
+        throw new Error(`fills: ${legacy.error.message}`);
+      }
+
+      const rows = (legacy.data ?? []).map((row) => {
+        const { orders, ...fill } = row as Record<string, unknown> & { orders?: { broker_mode?: BotMode }[] | { broker_mode?: BotMode } };
+        const brokerMode = Array.isArray(orders) ? orders[0]?.broker_mode : orders?.broker_mode;
+        return { ...fill, mode: brokerMode ?? currentMode };
+      });
+
+      return fillSchema.array().parse(rows);
+    }
   });
 
   const positionsQuery = useQuery({
@@ -138,6 +173,25 @@ export function useBotDashboard(userId?: string) {
           .order("opened_at", { ascending: false }),
         (value) => positionSchema.array().parse(value),
         "positions"
+      )
+  });
+
+  const closedPositionsQuery = useQuery({
+    queryKey: ["closed-positions", userId, currentMode],
+    enabled,
+    refetchInterval: 15000,
+    queryFn: () =>
+      fetchSingle(
+        client
+          .from("positions")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .eq("status", "closed")
+          .order("closed_at", { ascending: false })
+          .limit(15),
+        (value) => positionSchema.array().parse(value),
+        "closed_positions"
       )
   });
 
@@ -221,6 +275,7 @@ export function useBotDashboard(userId?: string) {
     signals: signalsQuery.data ?? [],
     fills: fillsQuery.data ?? [],
     positions: positionsQuery.data ?? [],
+    closedPositions: closedPositionsQuery.data ?? [],
     riskEvents: riskEventsQuery.data ?? [],
     commands: commandsQuery.data ?? [],
     isLoading:
@@ -230,6 +285,7 @@ export function useBotDashboard(userId?: string) {
       signalsQuery.isLoading ||
       fillsQuery.isLoading ||
       positionsQuery.isLoading ||
+      closedPositionsQuery.isLoading ||
       riskEventsQuery.isLoading ||
       commandsQuery.isLoading,
     error:
@@ -239,6 +295,7 @@ export function useBotDashboard(userId?: string) {
       signalsQuery.error ??
       fillsQuery.error ??
       positionsQuery.error ??
+      closedPositionsQuery.error ??
       riskEventsQuery.error ??
       commandsQuery.error,
     enqueueCommand,

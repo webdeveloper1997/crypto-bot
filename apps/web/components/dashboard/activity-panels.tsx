@@ -2,12 +2,13 @@
 
 import type { BotCommand, FillRecord, PositionRecord, RiskEvent, SignalRecord } from "@crypto-bot/shared";
 
-import { formatNumber, formatSignedBps, formatTimestamp, formatUsd } from "@/lib/format";
+import { formatNumber, formatSignedPercent, formatSignedPercentFromBps, formatTimestamp, formatUsd } from "@/lib/format";
 
 type ActivityPanelsProps = {
   signals: SignalRecord[];
   fills: FillRecord[];
   positions: PositionRecord[];
+  closedPositions: PositionRecord[];
   riskEvents: RiskEvent[];
   commands: BotCommand[];
 };
@@ -55,42 +56,59 @@ function InfoGrid({
   );
 }
 
-export function ActivityPanels({ signals, fills, positions, riskEvents, commands }: ActivityPanelsProps) {
+export function ActivityPanels({ signals, fills, positions, closedPositions, riskEvents, commands }: ActivityPanelsProps) {
+  const closedTradeCards = closedPositions
+    .filter((position) => position.closed_at)
+    .map((position) => {
+      const grossPnl = position.realized_pnl + position.fee_total;
+      const exitPrice =
+        position.quantity > 0 ? position.average_entry + grossPnl / position.quantity : position.average_entry;
+      const returnPct =
+        position.quantity > 0 && position.average_entry > 0
+          ? (position.realized_pnl / (position.average_entry * position.quantity)) * 100
+          : 0;
+
+      return {
+        ...position,
+        exitPrice,
+        grossPnl,
+        returnPct
+      };
+    });
+
   return (
     <div className="grid gap-6 xl:grid-cols-2">
-      <SectionShell title="Prediction ledger" subtitle="Signals">
-        {signals.length === 0 ? (
-          <EmptyState message="No resolved signal records yet. Start the bot in paper mode and this panel will fill with calls, realized outcomes, and fee drag." />
+      <SectionShell title="Closed trades" subtitle="Outcomes">
+        {closedTradeCards.length === 0 ? (
+          <EmptyState message="No closed trades yet in the current mode. Once a position is opened and later sold, this panel will show buy price, sell price, fees, return, and net profit in USD." />
         ) : (
           <div className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
-            {signals.map((signal) => (
-              <article key={signal.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+            {closedTradeCards.map((trade) => (
+              <article key={trade.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-[var(--color-ink)]">{signal.symbol}</p>
-                    <p className="mt-1 text-sm capitalize text-[var(--color-muted)]">
-                      {signal.predicted_direction} {signal.timeframe} • {formatTimestamp(signal.generated_at)}
+                    <p className="text-base font-semibold text-[var(--color-ink)]">{trade.symbol}</p>
+                    <p className="mt-1 text-sm text-[var(--color-muted)]">
+                      Bought {formatTimestamp(trade.opened_at)} • Sold {formatTimestamp(trade.closed_at)}
                     </p>
                   </div>
                   <span
                     className={`rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.24em] ${
-                      signal.hit == null
-                        ? "bg-slate-100 text-slate-600"
-                        : signal.hit
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-rose-100 text-rose-700"
+                      trade.realized_pnl >= 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"
                     }`}
                   >
-                    {signal.hit == null ? "open" : signal.hit ? "hit" : "miss"}
+                    {trade.realized_pnl >= 0 ? "profit" : "loss"}
                   </span>
                 </div>
                 <div className="mt-4">
                   <InfoGrid
                     items={[
-                      { label: "Expected", value: formatSignedBps(signal.expected_move_bps) },
-                      { label: "Actual", value: formatSignedBps(signal.realized_return_bps) },
-                      { label: "Fees", value: formatUsd(signal.fee_quote ?? 0) },
-                      { label: "Confidence", value: `${signal.confidence.toFixed(2)}` }
+                      { label: "Buy price", value: formatUsd(trade.average_entry) },
+                      { label: "Sell price", value: formatUsd(trade.exitPrice) },
+                      { label: "Fees paid", value: formatUsd(trade.fee_total) },
+                      { label: "Return", value: formatSignedPercent(trade.returnPct) },
+                      { label: "Gross PnL", value: formatUsd(trade.grossPnl) },
+                      { label: "Net profit", value: formatUsd(trade.realized_pnl) }
                     ]}
                   />
                 </div>
@@ -111,11 +129,11 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
                   <div>
                     <p className="text-base font-semibold text-[var(--color-ink)]">{fill.symbol}</p>
                     <p className="mt-1 text-sm uppercase text-[var(--color-muted)]">
-                      {fill.side} • {formatTimestamp(fill.executed_at)}
+                      {fill.mode ?? "current mode"} • {fill.side} • {formatTimestamp(fill.executed_at)}
                     </p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-700">
-                    {formatUsd(fill.price)}
+                    fill {formatUsd(fill.price)}
                   </span>
                 </div>
                 <div className="mt-4">
@@ -126,7 +144,8 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
                       {
                         label: "Commission",
                         value: `${formatNumber(fill.commission_amount, 6)} ${fill.commission_asset ?? ""}`.trim()
-                      }
+                      },
+                      { label: "Fill price", value: formatUsd(fill.price) }
                     ]}
                   />
                 </div>
@@ -158,7 +177,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
                   <InfoGrid
                     items={[
                       { label: "Quantity", value: formatNumber(position.quantity, 6) },
-                      { label: "Average entry", value: formatUsd(position.average_entry) },
+                      { label: "Buy price", value: formatUsd(position.average_entry) },
                       { label: "Unrealized PnL", value: formatUsd(position.unrealized_pnl) },
                       { label: "Fees", value: formatUsd(position.fee_total) }
                     ]}
@@ -233,6 +252,40 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
             </div>
           </div>
         </div>
+      </SectionShell>
+
+      <SectionShell title="Signal review" subtitle="Predictions">
+        {signals.length === 0 ? (
+          <EmptyState message="No signals recorded yet in the current mode." />
+        ) : (
+          <div className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
+            {signals.map((signal) => (
+              <article key={signal.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-[var(--color-ink)]">{signal.symbol}</p>
+                    <p className="mt-1 text-sm capitalize text-[var(--color-muted)]">
+                      {signal.mode ?? "current mode"} • {signal.predicted_direction} • {formatTimestamp(signal.generated_at)}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-700">
+                    {signal.hit == null ? "open" : signal.hit ? "correct" : "wrong"}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <InfoGrid
+                    items={[
+                      { label: "Expected move", value: formatSignedPercentFromBps(signal.expected_move_bps) },
+                      { label: "Actual move", value: formatSignedPercentFromBps(signal.realized_return_bps) },
+                      { label: "Fees", value: formatUsd(signal.fee_quote ?? 0) },
+                      { label: "Confidence", value: `${signal.confidence.toFixed(2)}` }
+                    ]}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </SectionShell>
     </div>
   );

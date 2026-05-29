@@ -65,6 +65,7 @@ export default function DashboardPage() {
     signals,
     fills,
     positions,
+    closedPositions,
     riskEvents,
     commands,
     summary,
@@ -246,6 +247,7 @@ export default function DashboardPage() {
             signals={signals}
             fills={fills}
             positions={positions}
+            closedPositions={closedPositions}
             riskEvents={riskEvents}
             commands={commands}
           />
