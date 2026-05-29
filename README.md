@@ -126,6 +126,7 @@ Use it only as a local worksheet. Final secret placement is split by environment
   - Firebase deploy credentials
   - public Supabase frontend values
   - Oracle SSH deploy credentials
+  - optional Oracle worker runtime secrets if you want CI/CD to refresh `/etc/crypto-bot/worker.env` automatically
 - Oracle `/etc/crypto-bot/worker.env`
   - Supabase service-role key
   - Gemini key
@@ -141,12 +142,36 @@ Never put Binance keys, Gemini keys, or `SUPABASE_SERVICE_ROLE_KEY` into the fro
 - GitHub Actions runs [deploy-web.yml](/home/muhammad/Desktop/crypto-bot/.github/workflows/deploy-web.yml).
 - The workflow builds the static Next.js export.
 - Firebase Hosting serves `apps/web/out`.
+- The workflow now fails fast if Firebase or public Supabase secrets are missing.
 
 ### Worker
 
 - GitHub Actions runs [deploy-worker.yml](/home/muhammad/Desktop/crypto-bot/.github/workflows/deploy-worker.yml).
-- The workflow SSHes into Oracle, syncs the repo, installs the worker into a virtualenv, and restarts `crypto-bot-worker.service`.
+- The workflow SSHes into Oracle, syncs the repo, rebuilds a fresh worker virtualenv, verifies the systemd service, and restarts `crypto-bot-worker.service`.
+- If worker runtime secrets are present in GitHub, the workflow renders `/etc/crypto-bot/worker.env` automatically before restarting the service.
+- If worker runtime secrets are not present in GitHub, the workflow reuses the existing `/etc/crypto-bot/worker.env` already installed on Oracle, but it will fail if `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` are missing there.
 - The Oracle server must already be bootstrapped once with [bootstrap-oracle.sh](/home/muhammad/Desktop/crypto-bot/deploy/bootstrap-oracle.sh).
+
+Recommended worker GitHub secrets if you want Oracle env managed by CI:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `WORKER_SUPABASE_URL` or reuse `SUPABASE_URL`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `BINANCE_TESTNET_API_KEY`
+- `BINANCE_TESTNET_API_SECRET`
+- `BINANCE_LIVE_API_KEY`
+- `BINANCE_LIVE_API_SECRET`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `ALLOW_LIVE_TRADING`
+- `WORKER_LOG_LEVEL`
+- `POLL_INTERVAL_SECONDS`
+- `CANDLE_LIMIT`
+- `PAPER_FEE_RATE`
+- `PAPER_SLIPPAGE_BPS`
+
+Oracle does not need frontend-only keys such as `NEXT_PUBLIC_SUPABASE_ANON_KEY` or Firebase secrets.
 
 ### Supabase
 

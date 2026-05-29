@@ -218,10 +218,15 @@ export default function DashboardPage() {
 
         <div className="mt-6">
           <ModeControl
+            displayName={settings?.display_name}
             desiredMode={settings?.desired_mode}
             actualMode={settings?.actual_mode}
             pendingMode={pendingMode}
             isRunning={settings?.is_running}
+            symbols={settings?.symbols}
+            timeframe={settings?.timeframe}
+            decisionIntervalMinutes={settings?.decision_interval_minutes}
+            strategyVersion={settings?.strategy_version}
             isSubmitting={enqueueCommand.isPending}
             activeAction={activeAction}
             commandNotice={commandFeedback}

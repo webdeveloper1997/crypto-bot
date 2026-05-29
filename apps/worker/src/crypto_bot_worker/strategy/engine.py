@@ -44,7 +44,7 @@ class StrategyEngine:
             score=round(score, 2),
             regime=regime,
             rationale=rationale,
-            entry_plan={"trigger": "market", "trend_ok": bullish_trend, "volume_pulse": bool(volume_pulse)},
+            entry_plan={"trigger": "market", "trend_ok": bool(bullish_trend), "volume_pulse": bool(volume_pulse)},
             stop_plan={"distance_bps": round(stop_distance_bps, 2)},
             take_profit_plan={"distance_bps": round(take_profit_bps, 2)},
         )
@@ -74,4 +74,3 @@ class StrategyEngine:
             updated.confidence = round(min(0.98, updated.confidence + 0.05), 4)
 
         return updated
-

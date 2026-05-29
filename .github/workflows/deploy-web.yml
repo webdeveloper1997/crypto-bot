@@ -9,6 +9,11 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,12 +25,17 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Validate deploy secrets
+        run: |
+          set -euo pipefail
+          [[ -n "${NEXT_PUBLIC_SUPABASE_URL}" ]] || { echo "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL secret"; exit 1; }
+          [[ -n "${NEXT_PUBLIC_SUPABASE_ANON_KEY}" ]] || { echo "Missing NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY secret"; exit 1; }
+          [[ -n "${FIREBASE_PROJECT_ID}" ]] || { echo "Missing FIREBASE_PROJECT_ID secret"; exit 1; }
+          [[ -n "${FIREBASE_SERVICE_ACCOUNT}" ]] || { echo "Missing FIREBASE_SERVICE_ACCOUNT secret"; exit 1; }
 
       - name: Build static dashboard
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
         run: npm run build:web
 
       - name: Deploy to Firebase Hosting

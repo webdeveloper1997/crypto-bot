@@ -9,10 +9,15 @@ type CommandNotice = {
 };
 
 type ModeControlProps = {
+  displayName?: string;
   desiredMode?: BotMode;
   actualMode?: BotMode;
   pendingMode?: BotMode;
   isRunning?: boolean;
+  symbols?: string[];
+  timeframe?: string;
+  decisionIntervalMinutes?: number;
+  strategyVersion?: string;
   isSubmitting: boolean;
   activeAction?: string | null;
   commandNotice?: CommandNotice | null;
@@ -62,10 +67,15 @@ function ActionButton({
 }
 
 export function ModeControl({
+  displayName,
   desiredMode,
   actualMode,
   pendingMode,
   isRunning,
+  symbols,
+  timeframe,
+  decisionIntervalMinutes,
+  strategyVersion,
   isSubmitting,
   activeAction,
   commandNotice,
@@ -86,6 +96,32 @@ export function ModeControl({
             The UI can only request actions. The Oracle worker decides whether the command is valid, applies exchange
             safety checks, and reports the final result back into Supabase.
           </p>
+          <div className="mt-5 rounded-[1.35rem] border border-white/70 bg-white/72 px-4 py-4">
+            <p className="mono text-[10px] uppercase tracking-[0.28em] text-[var(--color-muted)]">Trading universe</p>
+            <p className="mt-2 text-sm font-medium leading-7 text-[var(--color-ink)] md:text-[15px]">
+              {displayName ?? "Primary Bot"} is watching {(symbols ?? []).length || 3} spot pairs:
+              {" "}
+              {(symbols?.length ? symbols : ["BTCUSDT", "ETHUSDT", "SOLUSDT"]).join(", ")}.
+            </p>
+            <p className="mt-2 text-sm leading-7 text-[var(--color-muted)] md:text-[15px]">
+              It evaluates {timeframe ?? "1m"} candles and makes a fresh decision every {decisionIntervalMinutes ?? 5}
+              {" "}
+              minutes using {strategyVersion ?? "intraday-rules-ml-v1"}.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-700">
+                timeframe {timeframe ?? "1m"}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-700">
+                cycle {decisionIntervalMinutes ?? 5}m
+              </span>
+              {(symbols?.length ? symbols : ["BTCUSDT", "ETHUSDT", "SOLUSDT"]).map((symbol) => (
+                <span key={symbol} className="rounded-full bg-white/75 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-700">
+                  {symbol}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[21rem] xl:max-w-[24rem]">

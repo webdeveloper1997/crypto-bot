@@ -13,9 +13,31 @@ jobs:
       ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
       ORACLE_USER: ${{ secrets.ORACLE_USER }}
       ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+      WORKER_SUPABASE_URL: ${{ secrets.WORKER_SUPABASE_URL || secrets.SUPABASE_URL }}
+      WORKER_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      WORKER_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      WORKER_GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
+      WORKER_BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
+      WORKER_BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
+      WORKER_BINANCE_LIVE_API_KEY: ${{ secrets.BINANCE_LIVE_API_KEY }}
+      WORKER_BINANCE_LIVE_API_SECRET: ${{ secrets.BINANCE_LIVE_API_SECRET }}
+      WORKER_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      WORKER_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      WORKER_ALLOW_LIVE_TRADING: ${{ secrets.ALLOW_LIVE_TRADING || 'false' }}
+      WORKER_LOG_LEVEL: ${{ secrets.WORKER_LOG_LEVEL || 'INFO' }}
+      WORKER_POLL_INTERVAL_SECONDS: ${{ secrets.POLL_INTERVAL_SECONDS || '60' }}
+      WORKER_CANDLE_LIMIT: ${{ secrets.CANDLE_LIMIT || '200' }}
+      WORKER_PAPER_FEE_RATE: ${{ secrets.PAPER_FEE_RATE || '0.001' }}
+      WORKER_PAPER_SLIPPAGE_BPS: ${{ secrets.PAPER_SLIPPAGE_BPS || '5.0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate deploy connection
+        run: |
+          set -euo pipefail
+          [[ -n "${ORACLE_HOST}" ]] || { echo "Missing ORACLE_HOST secret"; exit 1; }
+          [[ -n "${ORACLE_USER}" ]] || { echo "Missing ORACLE_USER secret"; exit 1; }
 
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -27,29 +49,83 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${ORACLE_PORT:-22}" -H "${ORACLE_HOST}" >> ~/.ssh/known_hosts
 
+      - name: Render worker runtime env
+        run: |
+          set -euo pipefail
+          if [[ -n "${WORKER_SUPABASE_SERVICE_ROLE_KEY}" ]]; then
+            [[ -n "${WORKER_SUPABASE_URL}" ]] || { echo "Missing WORKER_SUPABASE_URL or SUPABASE_URL secret"; exit 1; }
+            cat > /tmp/crypto-bot-worker.env <<EOF
+APP_ENV=production
+LOG_LEVEL=${WORKER_LOG_LEVEL}
+SUPABASE_URL=${WORKER_SUPABASE_URL}
+SUPABASE_SERVICE_ROLE_KEY=${WORKER_SUPABASE_SERVICE_ROLE_KEY}
+GEMINI_API_KEY=${WORKER_GEMINI_API_KEY}
+GEMINI_MODEL=${WORKER_GEMINI_MODEL}
+BINANCE_TESTNET_API_KEY=${WORKER_BINANCE_TESTNET_API_KEY}
+BINANCE_TESTNET_API_SECRET=${WORKER_BINANCE_TESTNET_API_SECRET}
+BINANCE_LIVE_API_KEY=${WORKER_BINANCE_LIVE_API_KEY}
+BINANCE_LIVE_API_SECRET=${WORKER_BINANCE_LIVE_API_SECRET}
+TELEGRAM_BOT_TOKEN=${WORKER_TELEGRAM_BOT_TOKEN}
+TELEGRAM_CHAT_ID=${WORKER_TELEGRAM_CHAT_ID}
+ALLOW_LIVE_TRADING=${WORKER_ALLOW_LIVE_TRADING}
+POLL_INTERVAL_SECONDS=${WORKER_POLL_INTERVAL_SECONDS}
+CANDLE_LIMIT=${WORKER_CANDLE_LIMIT}
+PAPER_FEE_RATE=${WORKER_PAPER_FEE_RATE}
+PAPER_SLIPPAGE_BPS=${WORKER_PAPER_SLIPPAGE_BPS}
+EOF
+            chmod 600 /tmp/crypto-bot-worker.env
+          else
+            echo "No worker runtime secrets found in GitHub. Existing /etc/crypto-bot/worker.env will be reused on Oracle."
+          fi
+
       - name: Sync repository to Oracle
         run: |
-          rsync -az --delete \
+          rsync -az --delete --delete-excluded \
             -e "ssh -p ${ORACLE_PORT:-22}" \
+            --exclude ".agents" \
+            --exclude ".codex" \
+            --exclude ".env" \
             --exclude ".git" \
             --exclude "node_modules" \
             --exclude ".next" \
+            --exclude ".venv-worker" \
             --exclude "apps/web/out" \
+            --exclude "apps/web/.env.local" \
+            --exclude "AI Crypto Trading Techniques and Profitability.docx" \
+            --exclude "crypto-bot-60b34-b0ce39c80579.json" \
             ./ "${ORACLE_USER}@${ORACLE_HOST}:/tmp/crypto-bot-deploy/"
+
+      - name: Sync worker runtime env to Oracle
+        if: env.WORKER_SUPABASE_SERVICE_ROLE_KEY != ''
+        run: |
+          rsync -az \
+            -e "ssh -p ${ORACLE_PORT:-22}" \
+            /tmp/crypto-bot-worker.env "${ORACLE_USER}@${ORACLE_HOST}:/tmp/crypto-bot-worker.env"
 
       - name: Install dependencies and restart worker
         run: |
           ssh -p "${ORACLE_PORT:-22}" "${ORACLE_USER}@${ORACLE_HOST}" '
             set -euo pipefail
-            sudo mkdir -p /opt/crypto-bot
+            sudo mkdir -p /opt/crypto-bot /etc/crypto-bot
             sudo rsync -a --delete /tmp/crypto-bot-deploy/ /opt/crypto-bot/current/
             sudo chown -R $USER:$USER /opt/crypto-bot
+            if [ -f /tmp/crypto-bot-worker.env ]; then
+              sudo install -m 600 /tmp/crypto-bot-worker.env /etc/crypto-bot/worker.env
+            fi
+            if [ ! -f /etc/crypto-bot/worker.env ]; then
+              echo "Missing /etc/crypto-bot/worker.env on Oracle" >&2
+              exit 1
+            fi
+            sudo bash -lc '\''for key in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do if ! grep -q "^${key}=." /etc/crypto-bot/worker.env; then echo "Missing ${key} in /etc/crypto-bot/worker.env" >&2; exit 1; fi; done'\''
             cd /opt/crypto-bot/current
+            rm -rf .venv
             python3 -m venv .venv
-            .venv/bin/pip install --upgrade pip
+            .venv/bin/pip install --upgrade pip setuptools wheel
             .venv/bin/pip install -e "apps/worker"
             sudo install -m 644 deploy/systemd/crypto-bot-worker.service /etc/systemd/system/crypto-bot-worker.service
             sudo systemctl daemon-reload
             sudo systemctl enable crypto-bot-worker.service
             sudo systemctl restart crypto-bot-worker.service
+            sudo systemctl is-active --quiet crypto-bot-worker.service
+            sudo journalctl -u crypto-bot-worker.service -n 20 --no-pager
           '
