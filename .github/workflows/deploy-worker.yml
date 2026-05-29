@@ -54,25 +54,25 @@ jobs:
           set -euo pipefail
           if [[ -n "${WORKER_SUPABASE_SERVICE_ROLE_KEY}" ]]; then
             [[ -n "${WORKER_SUPABASE_URL}" ]] || { echo "Missing WORKER_SUPABASE_URL or SUPABASE_URL secret"; exit 1; }
-            cat > /tmp/crypto-bot-worker.env <<EOF
-            APP_ENV=production
-            LOG_LEVEL=${WORKER_LOG_LEVEL}
-            SUPABASE_URL=${WORKER_SUPABASE_URL}
-            SUPABASE_SERVICE_ROLE_KEY=${WORKER_SUPABASE_SERVICE_ROLE_KEY}
-            GEMINI_API_KEY=${WORKER_GEMINI_API_KEY}
-            GEMINI_MODEL=${WORKER_GEMINI_MODEL}
-            BINANCE_TESTNET_API_KEY=${WORKER_BINANCE_TESTNET_API_KEY}
-            BINANCE_TESTNET_API_SECRET=${WORKER_BINANCE_TESTNET_API_SECRET}
-            BINANCE_LIVE_API_KEY=${WORKER_BINANCE_LIVE_API_KEY}
-            BINANCE_LIVE_API_SECRET=${WORKER_BINANCE_LIVE_API_SECRET}
-            TELEGRAM_BOT_TOKEN=${WORKER_TELEGRAM_BOT_TOKEN}
-            TELEGRAM_CHAT_ID=${WORKER_TELEGRAM_CHAT_ID}
-            ALLOW_LIVE_TRADING=${WORKER_ALLOW_LIVE_TRADING}
-            POLL_INTERVAL_SECONDS=${WORKER_POLL_INTERVAL_SECONDS}
-            CANDLE_LIMIT=${WORKER_CANDLE_LIMIT}
-            PAPER_FEE_RATE=${WORKER_PAPER_FEE_RATE}
-            PAPER_SLIPPAGE_BPS=${WORKER_PAPER_SLIPPAGE_BPS}
-            EOF
+            printf '%s\n' \
+              "APP_ENV=production" \
+              "LOG_LEVEL=${WORKER_LOG_LEVEL}" \
+              "SUPABASE_URL=${WORKER_SUPABASE_URL}" \
+              "SUPABASE_SERVICE_ROLE_KEY=${WORKER_SUPABASE_SERVICE_ROLE_KEY}" \
+              "GEMINI_API_KEY=${WORKER_GEMINI_API_KEY}" \
+              "GEMINI_MODEL=${WORKER_GEMINI_MODEL}" \
+              "BINANCE_TESTNET_API_KEY=${WORKER_BINANCE_TESTNET_API_KEY}" \
+              "BINANCE_TESTNET_API_SECRET=${WORKER_BINANCE_TESTNET_API_SECRET}" \
+              "BINANCE_LIVE_API_KEY=${WORKER_BINANCE_LIVE_API_KEY}" \
+              "BINANCE_LIVE_API_SECRET=${WORKER_BINANCE_LIVE_API_SECRET}" \
+              "TELEGRAM_BOT_TOKEN=${WORKER_TELEGRAM_BOT_TOKEN}" \
+              "TELEGRAM_CHAT_ID=${WORKER_TELEGRAM_CHAT_ID}" \
+              "ALLOW_LIVE_TRADING=${WORKER_ALLOW_LIVE_TRADING}" \
+              "POLL_INTERVAL_SECONDS=${WORKER_POLL_INTERVAL_SECONDS}" \
+              "CANDLE_LIMIT=${WORKER_CANDLE_LIMIT}" \
+              "PAPER_FEE_RATE=${WORKER_PAPER_FEE_RATE}" \
+              "PAPER_SLIPPAGE_BPS=${WORKER_PAPER_SLIPPAGE_BPS}" \
+              > /tmp/crypto-bot-worker.env
             chmod 600 /tmp/crypto-bot-worker.env
           else
             echo "No worker runtime secrets found in GitHub. Existing /etc/crypto-bot/worker.env will be reused on Oracle."
