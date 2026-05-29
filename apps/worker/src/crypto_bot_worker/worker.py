@@ -138,6 +138,7 @@ class CryptoBotWorker:
                 bot.user_id,
                 llm_analysis_id,
                 {
+                    "mode": bot.actual_mode,
                     "symbol": signal.symbol,
                     "timeframe": signal.timeframe,
                     "generated_at": datetime.now(UTC).isoformat(),
@@ -281,6 +282,7 @@ class CryptoBotWorker:
             {
                 "user_id": bot.user_id,
                 "order_id": order_id,
+                "mode": execution.mode,
                 "symbol": execution.symbol,
                 "side": execution.side,
                 "executed_at": execution.executed_at.isoformat(),

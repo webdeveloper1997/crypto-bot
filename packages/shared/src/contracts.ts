@@ -84,6 +84,7 @@ export const dailyMetricSchema = z.object({
 export const signalSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
+  mode: z.enum(BOT_MODES),
   symbol: z.string(),
   timeframe: z.string(),
   generated_at: isoDatetimeSchema,
@@ -106,6 +107,7 @@ export const fillSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
   order_id: z.string().uuid(),
+  mode: z.enum(BOT_MODES),
   symbol: z.string(),
   side: z.enum(["buy", "sell"]),
   executed_at: isoDatetimeSchema,

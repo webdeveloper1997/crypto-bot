@@ -62,7 +62,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
         {signals.length === 0 ? (
           <EmptyState message="No resolved signal records yet. Start the bot in paper mode and this panel will fill with calls, realized outcomes, and fee drag." />
         ) : (
-          <div className="space-y-4">
+          <div className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
             {signals.map((signal) => (
               <article key={signal.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -104,7 +104,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
         {fills.length === 0 ? (
           <EmptyState message="No fills yet. Once the worker executes a paper, testnet, or live order, every commission and price will be listed here." />
         ) : (
-          <div className="space-y-4">
+          <div className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
             {fills.map((fill) => (
               <article key={fill.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -140,7 +140,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
         {positions.length === 0 ? (
           <EmptyState message="No open positions in the current mode. This section will show live exposure, entry price, and unrealized PnL once a position is opened." />
         ) : (
-          <div className="space-y-4">
+          <div className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
             {positions.map((position) => (
               <article key={position.id} className="rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -174,7 +174,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-[1.5rem] bg-white/70 p-4">
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--color-muted)]">Risk events</p>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 max-h-[30rem] space-y-3 overflow-y-auto pr-1">
               {riskEvents.length === 0 ? (
                 <EmptyState message="No risk events recorded yet." />
               ) : (
@@ -203,7 +203,7 @@ export function ActivityPanels({ signals, fills, positions, riskEvents, commands
 
           <div className="rounded-[1.5rem] bg-white/70 p-4">
             <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--color-muted)]">Recent commands</p>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 max-h-[30rem] space-y-3 overflow-y-auto pr-1">
               {commands.length === 0 ? (
                 <EmptyState message="No commands yet. Use the execution controls above to queue one." />
               ) : (

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type BotCommand,
+  type BotMode,
   botCommandSchema,
   botSettingsSchema,
   dailyMetricSchema,
@@ -48,73 +49,111 @@ export function useBotDashboard(userId?: string) {
       )
   });
 
+  const currentMode: BotMode = settingsQuery.data?.actual_mode ?? "paper";
+
   const equityQuery = useQuery({
-    queryKey: ["equity-snapshots", userId],
+    queryKey: ["equity-snapshots", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("equity_snapshots").select("*").eq("user_id", userId).order("snapped_at", { ascending: false }).limit(48),
+        client
+          .from("equity_snapshots")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .order("snapped_at", { ascending: false })
+          .limit(48),
         (value) => equitySnapshotSchema.array().parse(value).reverse(),
         "equity_snapshots"
       )
   });
 
   const metricsQuery = useQuery({
-    queryKey: ["daily-metrics", userId],
+    queryKey: ["daily-metrics", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("daily_metrics").select("*").eq("user_id", userId).order("trading_day", { ascending: false }).limit(30),
+        client
+          .from("daily_metrics")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .order("trading_day", { ascending: false })
+          .limit(30),
         (value) => dailyMetricSchema.array().parse(value).reverse(),
         "daily_metrics"
       )
   });
 
   const signalsQuery = useQuery({
-    queryKey: ["signals", userId],
+    queryKey: ["signals", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("signals").select("*").eq("user_id", userId).order("generated_at", { ascending: false }).limit(15),
+        client
+        .from("signals")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("mode", currentMode)
+        .order("generated_at", { ascending: false })
+        .limit(15),
         (value) => signalSchema.array().parse(value),
         "signals"
       )
   });
 
   const fillsQuery = useQuery({
-    queryKey: ["fills", userId],
+    queryKey: ["fills", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("fills").select("*").eq("user_id", userId).order("executed_at", { ascending: false }).limit(15),
+        client
+          .from("fills")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .order("executed_at", { ascending: false })
+          .limit(15),
         (value) => fillSchema.array().parse(value),
         "fills"
       )
   });
 
   const positionsQuery = useQuery({
-    queryKey: ["positions", userId],
+    queryKey: ["positions", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("positions").select("*").eq("user_id", userId).eq("status", "open").order("opened_at", { ascending: false }),
+        client
+          .from("positions")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .eq("status", "open")
+          .order("opened_at", { ascending: false }),
         (value) => positionSchema.array().parse(value),
         "positions"
       )
   });
 
   const riskEventsQuery = useQuery({
-    queryKey: ["risk-events", userId],
+    queryKey: ["risk-events", userId, currentMode],
     enabled,
     refetchInterval: 15000,
     queryFn: () =>
       fetchSingle(
-        client.from("risk_events").select("*").eq("user_id", userId).order("triggered_at", { ascending: false }).limit(12),
+        client
+          .from("risk_events")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("mode", currentMode)
+          .order("triggered_at", { ascending: false })
+          .limit(12),
         (value) => riskEventSchema.array().parse(value),
         "risk_events"
       )

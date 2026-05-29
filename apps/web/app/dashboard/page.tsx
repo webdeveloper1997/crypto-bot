@@ -242,7 +242,13 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <ActivityPanels signals={signals} fills={fills} positions={positions} riskEvents={riskEvents} commands={commands} />
+          <ActivityPanels
+            signals={signals}
+            fills={fills}
+            positions={positions}
+            riskEvents={riskEvents}
+            commands={commands}
+          />
         </div>
       </main>
     </AuthGate>
