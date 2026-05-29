@@ -1,0 +1,22 @@
+[Unit]
+Description=Crypto Bot Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/crypto-bot/current
+EnvironmentFile=/etc/crypto-bot/worker.env
+ExecStart=/opt/crypto-bot/current/.venv/bin/python -m crypto_bot_worker
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

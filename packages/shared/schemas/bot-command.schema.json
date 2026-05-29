@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypto-bot.local/schemas/bot-command.schema.json",
+  "title": "BotCommand",
+  "type": "object",
+  "required": [
+    "user_id",
+    "command_type",
+    "status",
+    "payload"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "user_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "command_type": {
+      "type": "string",
+      "enum": [
+        "switch_mode",
+        "start_bot",
+        "stop_bot",
+        "flatten_all",
+        "reconcile"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "applied",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "targetMode": {
+          "type": "string",
+          "enum": [
+            "paper",
+            "testnet",
+            "live"
+          ]
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 280
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+

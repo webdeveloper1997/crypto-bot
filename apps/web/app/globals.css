@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f7f1e7;
+  --color-panel: rgba(255, 255, 255, 0.74);
+  --color-ink: #1f2937;
+  --color-muted: #64748b;
+  --color-accent: #f59e0b;
+  --color-accent-strong: #d97706;
+  --font-display: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-mono: "Fira Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.22), transparent 24rem),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 28rem),
+    linear-gradient(180deg, #faf4ea 0%, #f2ede5 45%, #eef2f7 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-display), sans-serif;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.46) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.46) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: var(--color-panel);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.dashboard-shell {
+  width: min(1400px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.mono {
+  font-family: var(--font-mono), monospace;
+}

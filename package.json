@@ -1,0 +1,23 @@
+{
+  "name": "crypto-bot",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.11.0",
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "build:web": "npm run build --workspace @crypto-bot/web",
+    "typecheck:web": "npm run typecheck --workspace @crypto-bot/web",
+    "ci:web": "npm run typecheck:web && npm run build:web"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  }
+}
