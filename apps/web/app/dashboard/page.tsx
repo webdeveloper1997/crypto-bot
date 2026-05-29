@@ -8,6 +8,7 @@ import { ActivityPanels } from "@/components/dashboard/activity-panels";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ModeControl } from "@/components/dashboard/mode-control";
 import { PerformanceCharts } from "@/components/dashboard/performance-charts";
+import { SettingsPanel } from "@/components/dashboard/settings-panel";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useBotDashboard } from "@/hooks/use-bot-dashboard";
 import { formatPercentFromWhole, formatTimestamp, formatUsd } from "@/lib/format";
@@ -71,7 +72,8 @@ export default function DashboardPage() {
     summary,
     isLoading,
     error,
-    enqueueCommand
+    enqueueCommand,
+    updateSettings
   } = useBotDashboard(user?.id);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [commandFeedback, setCommandFeedback] = useState<CommandFeedback | null>(null);
@@ -235,6 +237,16 @@ export default function DashboardPage() {
             onStart={() => queueCommand("start_bot")}
             onStop={() => queueCommand("stop_bot")}
             onFlatten={() => queueCommand("flatten_all")}
+          />
+        </div>
+
+        <div className="mt-6">
+          <SettingsPanel
+            settings={settings}
+            isSubmitting={updateSettings.isPending}
+            onSave={async (input) => {
+              await updateSettings.mutateAsync(input);
+            }}
           />
         </div>
 

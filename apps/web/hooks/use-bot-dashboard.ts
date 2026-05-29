@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type BotCommand,
   type BotMode,
+  type BotSettings,
   botCommandSchema,
   botSettingsSchema,
   dailyMetricSchema,
@@ -253,6 +254,39 @@ export function useBotDashboard(userId?: string) {
     }
   });
 
+  const updateSettings = useMutation({
+    mutationFn: async (input: Partial<BotSettings>) => {
+      if (!userId) {
+        throw new Error("Missing authenticated user.");
+      }
+
+      const { data, error } = await client
+        .from("bot_settings")
+        .update(input)
+        .eq("user_id", userId)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return botSettingsSchema.parse(data);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["bot-settings", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["equity-snapshots", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["daily-metrics", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["signals", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["fills", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["positions", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["closed-positions", userId] }),
+        queryClient.invalidateQueries({ queryKey: ["risk-events", userId] })
+      ]);
+    }
+  });
+
   const summary = useMemo(() => {
     const latestEquity = equityQuery.data?.at(-1) ?? null;
     const latestMetrics = metricsQuery.data?.at(-1) ?? null;
@@ -299,6 +333,7 @@ export function useBotDashboard(userId?: string) {
       riskEventsQuery.error ??
       commandsQuery.error,
     enqueueCommand,
+    updateSettings,
     summary
   };
 }
