@@ -8,6 +8,8 @@
     "packages/shared"
   ],
   "scripts": {
+    "dev": "npm run dev:web",
+    "dev:web": "npm run dev --workspace @crypto-bot/web",
     "build:web": "npm run build --workspace @crypto-bot/web",
     "typecheck:web": "npm run typecheck --workspace @crypto-bot/web",
     "ci:web": "npm run typecheck:web && npm run build:web"

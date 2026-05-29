@@ -13,5 +13,6 @@
 
 ## Database
 - SQL migrations live under `supabase/migrations`.
+- Use numbered migration names such as `001_init_crypto_bot.sql`, `002_add_feature.sql`, and `003_adjust_policy.sql`.
 - Apply them intentionally through Supabase SQL or the CLI after the project exists.
 - The deploy workflows do not auto-apply schema changes.

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  type BotCommand,
   botCommandSchema,
   botSettingsSchema,
   dailyMetricSchema,
@@ -19,11 +20,12 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 async function fetchSingle<TInput, TParsed>(
   query: PromiseLike<{ data: TInput; error: { message: string } | null }>,
-  parser: (value: TInput) => TParsed
+  parser: (value: TInput) => TParsed,
+  label: string
 ): Promise<TParsed> {
   const result = await query;
   if (result.error) {
-    throw new Error(result.error.message);
+    throw new Error(`${label}: ${result.error.message}`);
   }
 
   return parser(result.data);
@@ -41,7 +43,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("bot_settings").select("*").eq("user_id", userId).maybeSingle(),
-        (value) => (value ? botSettingsSchema.parse(value) : null)
+        (value) => (value ? botSettingsSchema.parse(value) : null),
+        "bot_settings"
       )
   });
 
@@ -52,7 +55,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("equity_snapshots").select("*").eq("user_id", userId).order("snapped_at", { ascending: false }).limit(48),
-        (value) => equitySnapshotSchema.array().parse(value).reverse()
+        (value) => equitySnapshotSchema.array().parse(value).reverse(),
+        "equity_snapshots"
       )
   });
 
@@ -63,7 +67,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("daily_metrics").select("*").eq("user_id", userId).order("trading_day", { ascending: false }).limit(30),
-        (value) => dailyMetricSchema.array().parse(value).reverse()
+        (value) => dailyMetricSchema.array().parse(value).reverse(),
+        "daily_metrics"
       )
   });
 
@@ -74,7 +79,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("signals").select("*").eq("user_id", userId).order("generated_at", { ascending: false }).limit(15),
-        (value) => signalSchema.array().parse(value)
+        (value) => signalSchema.array().parse(value),
+        "signals"
       )
   });
 
@@ -85,7 +91,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("fills").select("*").eq("user_id", userId).order("executed_at", { ascending: false }).limit(15),
-        (value) => fillSchema.array().parse(value)
+        (value) => fillSchema.array().parse(value),
+        "fills"
       )
   });
 
@@ -96,7 +103,8 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("positions").select("*").eq("user_id", userId).eq("status", "open").order("opened_at", { ascending: false }),
-        (value) => positionSchema.array().parse(value)
+        (value) => positionSchema.array().parse(value),
+        "positions"
       )
   });
 
@@ -107,23 +115,25 @@ export function useBotDashboard(userId?: string) {
     queryFn: () =>
       fetchSingle(
         client.from("risk_events").select("*").eq("user_id", userId).order("triggered_at", { ascending: false }).limit(12),
-        (value) => riskEventSchema.array().parse(value)
+        (value) => riskEventSchema.array().parse(value),
+        "risk_events"
       )
   });
 
   const commandsQuery = useQuery({
     queryKey: ["bot-commands", userId],
     enabled,
-    refetchInterval: 15000,
+    refetchInterval: 4000,
     queryFn: () =>
       fetchSingle(
         client.from("bot_commands").select("*").eq("user_id", userId).order("requested_at", { ascending: false }).limit(12),
-        (value) => botCommandSchema.array().parse(value)
+        (value) => botCommandSchema.array().parse(value),
+        "bot_commands"
       )
   });
 
   const enqueueCommand = useMutation({
-    mutationFn: async (input: { commandType: BotCommandType; payload?: BotCommandPayload }) => {
+    mutationFn: async (input: { commandType: BotCommandType; payload?: BotCommandPayload }): Promise<BotCommand> => {
       if (!userId) {
         throw new Error("Missing authenticated user.");
       }
@@ -134,11 +144,13 @@ export function useBotDashboard(userId?: string) {
         payload: input.payload ?? {}
       };
 
-      const { error } = await client.from("bot_commands").insert(payload);
+      const { data, error } = await client.from("bot_commands").insert(payload).select("*").single();
 
       if (error) {
         throw new Error(error.message);
       }
+
+      return botCommandSchema.parse(data);
     },
     onSuccess: async () => {
       await Promise.all([

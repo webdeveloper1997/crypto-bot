@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { type BotMode } from "@crypto-bot/shared";
 
 import { AuthGate } from "@/components/auth/auth-gate";
@@ -11,6 +12,49 @@ import { useAuthSession } from "@/hooks/use-auth-session";
 import { useBotDashboard } from "@/hooks/use-bot-dashboard";
 import { formatPercentFromWhole, formatTimestamp, formatUsd } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+
+type CommandFeedback = {
+  commandId?: string;
+  detail?: string;
+  title: string;
+  tone: "error" | "info" | "success";
+};
+
+function describeCommand(commandType: string, mode?: BotMode) {
+  if (commandType === "switch_mode") {
+    return {
+      actionKey: "switch_mode",
+      detail: mode ? `Requested mode change to ${mode}. The worker will validate flat positions before applying it.` : "Requested mode change.",
+      success: mode ? `Execution mode switched to ${mode}.` : "Execution mode switched.",
+      title: mode ? `Switch to ${mode}` : "Switch mode"
+    };
+  }
+
+  if (commandType === "start_bot") {
+    return {
+      actionKey: "start_bot",
+      detail: "The worker will mark the bot as running and begin processing the next cycle.",
+      success: "The bot is marked running.",
+      title: "Start bot"
+    };
+  }
+
+  if (commandType === "stop_bot") {
+    return {
+      actionKey: "stop_bot",
+      detail: "The worker will stop opening new work and the dashboard will reflect the paused state.",
+      success: "The bot is marked stopped.",
+      title: "Stop bot"
+    };
+  }
+
+  return {
+    actionKey: "flatten_all",
+    detail: "The worker will attempt to close any open position in the active mode.",
+    success: "Flatten request was applied.",
+    title: "Flatten positions"
+  };
+}
 
 export default function DashboardPage() {
   const { user } = useAuthSession();
@@ -28,25 +72,97 @@ export default function DashboardPage() {
     error,
     enqueueCommand
   } = useBotDashboard(user?.id);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [commandFeedback, setCommandFeedback] = useState<CommandFeedback | null>(null);
 
   const pendingMode = commands.find((command) => command.command_type === "switch_mode" && command.status === "pending")?.payload
     ?.targetMode as BotMode | undefined;
+  const latestCommandStatus = useMemo(
+    () => (commandFeedback?.commandId ? commands.find((command) => command.id === commandFeedback.commandId) : null),
+    [commandFeedback?.commandId, commands]
+  );
+
+  useEffect(() => {
+    if (!latestCommandStatus || latestCommandStatus.status === "pending") {
+      return;
+    }
+
+    const meta = describeCommand(
+      latestCommandStatus.command_type,
+      latestCommandStatus.payload?.targetMode as BotMode | undefined
+    );
+
+    if (latestCommandStatus.status === "applied") {
+      setCommandFeedback({
+        commandId: latestCommandStatus.id,
+        detail: meta.success,
+        title: `${meta.title} succeeded`,
+        tone: "success"
+      });
+      setActiveAction(null);
+      return;
+    }
+
+    if (latestCommandStatus.status === "failed") {
+      setCommandFeedback({
+        commandId: latestCommandStatus.id,
+        detail: latestCommandStatus.error_message ?? "The worker rejected the command.",
+        title: `${meta.title} failed`,
+        tone: "error"
+      });
+      setActiveAction(null);
+    }
+  }, [latestCommandStatus]);
 
   async function signOut() {
     await getSupabaseBrowserClient().auth.signOut();
   }
 
+  function queueCommand(commandType: "flatten_all" | "start_bot" | "stop_bot" | "switch_mode", mode?: BotMode) {
+    const meta = describeCommand(commandType, mode);
+    setActiveAction(commandType);
+    setCommandFeedback({
+      detail: meta.detail,
+      title: `${meta.title} requested`,
+      tone: "info"
+    });
+
+    enqueueCommand.mutate(
+      commandType === "switch_mode"
+        ? { commandType, payload: { targetMode: mode } }
+        : { commandType },
+      {
+        onError: (mutationError) => {
+          setActiveAction(null);
+          setCommandFeedback({
+            detail: (mutationError as Error).message,
+            title: `${meta.title} failed`,
+            tone: "error"
+          });
+        },
+        onSuccess: (command) => {
+          setCommandFeedback({
+            commandId: command.id,
+            detail: "Command stored in Supabase. Waiting for the Oracle worker to apply it.",
+            title: `${meta.title} queued`,
+            tone: "info"
+          });
+        }
+      }
+    );
+  }
+
   return (
     <AuthGate>
       <main className="dashboard-shell">
-        <section className="glass-panel rounded-[2.75rem] px-8 py-8 md:px-10">
+        <section className="glass-panel rounded-[2rem] px-5 py-6 md:rounded-[2.75rem] md:px-10 md:py-8">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <p className="mono text-xs uppercase tracking-[0.34em] text-[var(--color-muted)]">Oracle worker + Supabase control plane</p>
-              <h1 className="mt-4 max-w-4xl text-5xl font-semibold leading-tight text-[var(--color-ink)]">
+              <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight text-[var(--color-ink)] md:text-5xl">
                 Read the bot like an operator, not like a black box.
               </h1>
-              <p className="mt-5 max-w-3xl text-base leading-8 text-[var(--color-muted)]">
+              <p className="mt-5 max-w-3xl text-sm leading-7 text-[var(--color-muted)] md:text-base md:leading-8">
                 Compare what the bot predicted against what the market actually did, track exact fee drag, inspect open
                 exposure, and keep the paper-to-live boundary deliberate.
               </p>
@@ -64,13 +180,13 @@ export default function DashboardPage() {
         </section>
 
         {error ? (
-          <section className="mt-6 rounded-[2rem] border border-rose-300 bg-rose-50 px-6 py-5 text-rose-700">
+          <section className="mt-6 rounded-[1.5rem] border border-rose-300 bg-rose-50 px-5 py-4 text-rose-700 md:rounded-[2rem] md:px-6 md:py-5">
             {(error as Error).message}
           </section>
         ) : null}
 
         {isLoading ? (
-          <section className="mt-6 rounded-[2rem] border border-white/70 bg-white/75 px-6 py-12 text-center text-[var(--color-muted)]">
+          <section className="mt-6 rounded-[1.5rem] border border-white/70 bg-white/75 px-6 py-10 text-center text-[var(--color-muted)] md:rounded-[2rem] md:py-12">
             Pulling bot settings, daily metrics, fills, and prediction history from Supabase.
           </section>
         ) : null}
@@ -107,10 +223,12 @@ export default function DashboardPage() {
             pendingMode={pendingMode}
             isRunning={settings?.is_running}
             isSubmitting={enqueueCommand.isPending}
-            onSwitchMode={(mode) => enqueueCommand.mutate({ commandType: "switch_mode", payload: { targetMode: mode } })}
-            onStart={() => enqueueCommand.mutate({ commandType: "start_bot" })}
-            onStop={() => enqueueCommand.mutate({ commandType: "stop_bot" })}
-            onFlatten={() => enqueueCommand.mutate({ commandType: "flatten_all" })}
+            activeAction={activeAction}
+            commandNotice={commandFeedback}
+            onSwitchMode={(mode) => queueCommand("switch_mode", mode)}
+            onStart={() => queueCommand("start_bot")}
+            onStop={() => queueCommand("stop_bot")}
+            onFlatten={() => queueCommand("flatten_all")}
           />
         </div>
 

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const isoDatetimeSchema = z.string().datetime({ offset: true });
+
 export const BOT_MODES = ["paper", "testnet", "live"] as const;
 export const BOT_COMMAND_TYPES = ["switch_mode", "start_bot", "stop_bot", "flatten_all", "reconcile"] as const;
 export const SIGNAL_DIRECTIONS = ["buy", "sell", "hold"] as const;
@@ -23,8 +25,8 @@ export const botCommandSchema = z.object({
   command_type: z.enum(BOT_COMMAND_TYPES),
   status: z.enum(["pending", "applied", "failed", "cancelled"]).default("pending"),
   payload: botCommandPayloadSchema.default({}),
-  requested_at: z.string().datetime().optional(),
-  processed_at: z.string().datetime().nullable().optional(),
+  requested_at: isoDatetimeSchema.optional(),
+  processed_at: isoDatetimeSchema.nullable().optional(),
   error_message: z.string().nullable().optional()
 });
 
@@ -54,7 +56,7 @@ export const equitySnapshotSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
   mode: z.enum(BOT_MODES),
-  snapped_at: z.string().datetime(),
+  snapped_at: isoDatetimeSchema,
   cash_balance: z.number(),
   invested_balance: z.number(),
   total_equity: z.number(),
@@ -84,7 +86,7 @@ export const signalSchema = z.object({
   user_id: z.string().uuid(),
   symbol: z.string(),
   timeframe: z.string(),
-  generated_at: z.string().datetime(),
+  generated_at: isoDatetimeSchema,
   predicted_direction: z.enum(SIGNAL_DIRECTIONS),
   confidence: z.number(),
   expected_move_bps: z.number(),
@@ -106,7 +108,7 @@ export const fillSchema = z.object({
   order_id: z.string().uuid(),
   symbol: z.string(),
   side: z.enum(["buy", "sell"]),
-  executed_at: z.string().datetime(),
+  executed_at: isoDatetimeSchema,
   quantity: z.number(),
   price: z.number(),
   commission_asset: z.string().nullable().optional(),
@@ -125,9 +127,9 @@ export const positionSchema = z.object({
   unrealized_pnl: z.number(),
   realized_pnl: z.number(),
   fee_total: z.number(),
-  opened_at: z.string().datetime(),
-  closed_at: z.string().datetime().nullable().optional(),
-  updated_at: z.string().datetime()
+  opened_at: isoDatetimeSchema,
+  closed_at: isoDatetimeSchema.nullable().optional(),
+  updated_at: isoDatetimeSchema
 });
 
 export const riskEventSchema = z.object({
@@ -139,8 +141,8 @@ export const riskEventSchema = z.object({
   symbol: z.string().nullable().optional(),
   message: z.string(),
   details: z.record(z.unknown()).nullable().optional(),
-  triggered_at: z.string().datetime(),
-  resolved_at: z.string().datetime().nullable().optional()
+  triggered_at: isoDatetimeSchema,
+  resolved_at: isoDatetimeSchema.nullable().optional()
 });
 
 export type BotCommandPayload = z.infer<typeof botCommandPayloadSchema>;
