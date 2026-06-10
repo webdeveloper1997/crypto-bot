@@ -38,6 +38,13 @@ The system is split into three planes:
   - Oracle bootstrap script, systemd unit, and worker runtime env template
 - `docs`
   - supporting deployment and credential notes
+- `versions`
+  - numbered version analysis and solution records, using files like `001-bot-analysis-and-solution.md`
+
+## Accurate Bot Analysis
+
+Use the `crypto_database` MCP server first for Supabase tables such as `signals`, `orders`, `fills`, `positions`, `daily_metrics`, and `risk_events`.
+Then SSH to the Oracle worker host from `ORACLE_HOST`/`ORACLE_USER` and inspect `sudo journalctl -u crypto-bot-worker.service --utc`; database rows alone can miss runtime-only bugs.
 
 ## Frontend
 

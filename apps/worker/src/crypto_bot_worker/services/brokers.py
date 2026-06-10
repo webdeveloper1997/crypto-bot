@@ -39,5 +39,4 @@ class BinanceBroker:
         self._binance_service = binance_service
 
     def execute(self, mode: BotMode, symbol: str, side: str, quantity: float, market_price: float) -> ExecutedOrder:
-        del market_price
-        return self._binance_service.place_market_order(mode=mode, symbol=symbol, side=side, quantity=quantity)
+        return self._binance_service.place_market_order(mode=mode, symbol=symbol, side=side, quantity=quantity, market_price=market_price)

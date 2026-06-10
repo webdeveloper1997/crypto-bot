@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import time
 from datetime import UTC, date, datetime
+from typing import Any
 
 from crypto_bot_worker.config import Settings
-from crypto_bot_worker.models import BotMode, BotSettingsRecord, DailyMetricRecord, ExecutedOrder, LlmAssessment, PositionRecord
-from crypto_bot_worker.services.binance import BinanceService
+from crypto_bot_worker.models import BotMode, BotSettingsRecord, DailyMetricRecord, ExecutedOrder, LlmAssessment, PositionRecord, SignalDecision
+from crypto_bot_worker.services.binance import BinanceQuantityError, BinanceService
 from crypto_bot_worker.services.brokers import BinanceBroker, PaperBroker
 from crypto_bot_worker.services.gemini import GeminiResearchService
 from crypto_bot_worker.services.repository import SupabaseRepository
@@ -111,61 +112,166 @@ class CryptoBotWorker:
             return
 
         for symbol in bot.symbols:
-            candles = self._binance.get_klines(symbol=symbol, interval=bot.timeframe, limit=self._settings.candle_limit)
-            self._repo.upsert_market_bars(bot.user_id, symbol, bot.timeframe, candles[-120:])
-            latest_prices[symbol] = candles[-1].close
-
-            base_signal = self._strategy.build_signal(symbol=symbol, timeframe=bot.timeframe, candles=candles, has_open_position=symbol in open_positions)
-            llm_assessment = self._maybe_analyze(base_signal, candles)
-            signal = self._strategy.apply_llm_filter(base_signal, llm_assessment)
-
-            llm_analysis_id = None
-            if llm_assessment.raw_response:
-                llm_analysis_id = self._repo.insert_llm_analysis(
-                    bot.user_id,
-                    symbol,
-                    bot.timeframe,
+            try:
+                executed, latest_price = self._process_symbol(bot, symbol, open_positions)
+                latest_prices[symbol] = latest_price
+                if executed:
+                    open_positions = {position.symbol: position for position in self._repo.list_open_positions(bot.user_id, bot.actual_mode)}
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("Symbol cycle failed for %s", symbol)
+                self._repo.insert_risk_event(
                     {
-                        "sentiment": llm_assessment.sentiment,
-                        "risk_flag": llm_assessment.risk_flag,
-                        "confidence": llm_assessment.confidence,
-                        "rationale": llm_assessment.one_sentence_reason,
-                        "raw_response": llm_assessment.raw_response,
-                    },
+                        "user_id": bot.user_id,
+                        "event_type": "symbol_cycle_failed",
+                        "severity": "warning",
+                        "mode": bot.actual_mode,
+                        "symbol": symbol,
+                        "message": self._safe_error_message(exc),
+                        "details": self._exception_details(exc),
+                    }
                 )
 
-            signal_id = self._repo.insert_signal(
-                bot.user_id,
-                llm_analysis_id,
-                {
-                    "mode": bot.actual_mode,
-                    "symbol": signal.symbol,
-                    "timeframe": signal.timeframe,
-                    "generated_at": datetime.now(UTC).isoformat(),
-                    "predicted_direction": signal.predicted_direction,
-                    "confidence": signal.confidence,
-                    "expected_move_bps": signal.expected_move_bps,
-                    "score": signal.score,
-                    "regime": signal.regime,
-                    "rationale": signal.rationale,
-                    "entry_plan": signal.entry_plan,
-                    "stop_plan": signal.stop_plan,
-                    "take_profit_plan": signal.take_profit_plan,
-                    "strategy_version": signal.strategy_version,
-                },
-            )
-
-            position = open_positions.get(symbol)
-            executed = self._maybe_execute(bot, signal_id, signal, position, latest_prices[symbol])
-            if executed:
-                open_positions = {position.symbol: position for position in self._repo.list_open_positions(bot.user_id, bot.actual_mode)}
-
         self._snapshot_equity(bot, latest_prices)
+
+    def _process_symbol(
+        self,
+        bot: BotSettingsRecord,
+        symbol: str,
+        open_positions: dict[str, PositionRecord],
+    ) -> tuple[ExecutedOrder | None, float]:
+        candles = self._binance.get_klines(symbol=symbol, interval=bot.timeframe, limit=self._settings.candle_limit)
+        self._repo.upsert_market_bars(bot.user_id, symbol, bot.timeframe, candles[-120:])
+        market_price = self._binance.get_last_price(symbol)
+        position = open_positions.get(symbol)
+
+        managed_exit = self._build_managed_exit_signal(bot, symbol, market_price, position)
+        if managed_exit is not None:
+            signal_id = self._persist_signal(bot, managed_exit, None)
+            return self._maybe_execute(bot, signal_id, managed_exit, position, market_price), market_price
+
+        base_signal = self._strategy.build_signal(
+            symbol=symbol,
+            timeframe=bot.timeframe,
+            candles=candles,
+            has_open_position=position is not None,
+            estimated_round_trip_cost_bps=self._estimated_round_trip_cost_bps(bot),
+            min_profit_buffer_bps=self._settings.min_profit_buffer_bps,
+            min_expected_move_bps=self._settings.min_expected_move_bps,
+            min_volume_ratio=self._settings.min_volume_ratio,
+            max_entry_atr_bps=self._settings.max_entry_atr_bps,
+            min_reward_risk=self._settings.min_reward_risk,
+        )
+        llm_assessment = self._maybe_analyze(base_signal, candles)
+        signal = self._strategy.apply_llm_filter(base_signal, llm_assessment)
+        llm_analysis_id = self._persist_llm_analysis(bot, symbol, llm_assessment)
+        signal_id = self._persist_signal(bot, signal, llm_analysis_id)
+        return self._maybe_execute(bot, signal_id, signal, position, market_price), market_price
 
     def _maybe_analyze(self, signal, candles) -> LlmAssessment:
         if signal.predicted_direction == "hold":
             return LlmAssessment(one_sentence_reason="No actionable signal; LLM skipped.")
         return self._research.analyze_signal(signal, candles)
+
+    def _persist_llm_analysis(self, bot: BotSettingsRecord, symbol: str, assessment: LlmAssessment) -> str | None:
+        if not assessment.raw_response:
+            return None
+        return self._repo.insert_llm_analysis(
+            bot.user_id,
+            symbol,
+            bot.timeframe,
+            {
+                "sentiment": assessment.sentiment,
+                "risk_flag": assessment.risk_flag,
+                "confidence": assessment.confidence,
+                "rationale": assessment.one_sentence_reason,
+                "raw_response": assessment.raw_response,
+            },
+        )
+
+    def _persist_signal(self, bot: BotSettingsRecord, signal: SignalDecision, llm_analysis_id: str | None) -> str:
+        return self._repo.insert_signal(
+            bot.user_id,
+            llm_analysis_id,
+            {
+                "mode": bot.actual_mode,
+                "symbol": signal.symbol,
+                "timeframe": signal.timeframe,
+                "generated_at": datetime.now(UTC).isoformat(),
+                "predicted_direction": signal.predicted_direction,
+                "confidence": signal.confidence,
+                "expected_move_bps": signal.expected_move_bps,
+                "score": signal.score,
+                "regime": signal.regime,
+                "rationale": signal.rationale,
+                "entry_plan": signal.entry_plan,
+                "stop_plan": signal.stop_plan,
+                "take_profit_plan": signal.take_profit_plan,
+                "strategy_version": signal.strategy_version,
+            },
+        )
+
+    def _build_managed_exit_signal(
+        self,
+        bot: BotSettingsRecord,
+        symbol: str,
+        market_price: float,
+        position: PositionRecord | None,
+    ) -> SignalDecision | None:
+        if position is None:
+            return None
+
+        entry_signal = self._repo.get_signal(position.signal_id or "")
+        stop_bps = self._planned_distance_bps(entry_signal, "stop_plan", fallback=max(8.0, self._settings.min_expected_move_bps / self._settings.min_reward_risk))
+        take_profit_bps = self._planned_distance_bps(entry_signal, "take_profit_plan", fallback=self._settings.min_expected_move_bps)
+        opened_at = position.opened_at if position.opened_at.tzinfo else position.opened_at.replace(tzinfo=UTC)
+        minutes_held = (datetime.now(UTC) - opened_at).total_seconds() / 60
+        gross_return_bps = ((market_price - position.average_entry) / position.average_entry) * 10000 if position.average_entry else 0.0
+
+        reason: str | None = None
+        confidence = 0.9
+        if gross_return_bps >= take_profit_bps:
+            reason = "take_profit_hit"
+            confidence = 0.96
+        elif gross_return_bps <= -stop_bps:
+            reason = "stop_loss_hit"
+            confidence = 0.98
+        elif minutes_held >= self._settings.max_hold_minutes:
+            reason = "max_hold_reached"
+            confidence = 0.86
+
+        if reason is None:
+            return None
+
+        return SignalDecision(
+            symbol=symbol,
+            timeframe=bot.timeframe,
+            predicted_direction="sell",
+            confidence=confidence,
+            expected_move_bps=round(abs(gross_return_bps), 2),
+            score=round(confidence * abs(gross_return_bps), 2),
+            regime="managed-exit",
+            rationale=f"Managed exit triggered: {reason}.",
+            entry_plan={
+                "trigger": "managed_exit",
+                "reason": reason,
+                "gross_return_bps": round(gross_return_bps, 2),
+                "minutes_held": round(minutes_held, 2),
+                "average_entry": position.average_entry,
+                "market_price": market_price,
+            },
+            stop_plan={"distance_bps": round(stop_bps, 2)},
+            take_profit_plan={"distance_bps": round(take_profit_bps, 2)},
+        )
+
+    @staticmethod
+    def _planned_distance_bps(signal: dict[str, Any] | None, key: str, fallback: float) -> float:
+        if not signal:
+            return float(fallback)
+        plan = signal.get(key) or {}
+        try:
+            return float(plan.get("distance_bps") or fallback)
+        except (TypeError, ValueError):
+            return float(fallback)
 
     def _maybe_execute(
         self,
@@ -181,7 +287,7 @@ class CryptoBotWorker:
         if signal.predicted_direction == "buy":
             if position is not None:
                 return None
-            allowed, reason = self._can_open_position(bot, market_price)
+            allowed, reason = self._can_open_position(bot, signal.symbol, market_price)
             if not allowed:
                 self._repo.insert_risk_event(
                     {
@@ -196,7 +302,11 @@ class CryptoBotWorker:
                 return None
 
             quantity = self._trade_notional(bot) / market_price
-            execution = self._execute_order(bot.actual_mode, signal.symbol, "buy", quantity, market_price)
+            try:
+                execution = self._execute_order(bot.actual_mode, signal.symbol, "buy", quantity, market_price)
+            except Exception as exc:  # noqa: BLE001
+                self._persist_execution_failure(bot, signal_id, signal.symbol, "buy", quantity, market_price, exc)
+                return None
             self._persist_execution(bot, signal_id, execution)
             self._repo.open_position(
                 {
@@ -213,7 +323,11 @@ class CryptoBotWorker:
             return execution
 
         if signal.predicted_direction == "sell" and position is not None:
-            execution = self._execute_order(bot.actual_mode, signal.symbol, "sell", position.quantity, market_price)
+            try:
+                execution = self._execute_order(bot.actual_mode, signal.symbol, "sell", position.quantity, market_price)
+            except Exception as exc:  # noqa: BLE001
+                self._persist_execution_failure(bot, signal_id, signal.symbol, "sell", position.quantity, market_price, exc)
+                return None
             self._persist_execution(bot, signal_id, execution)
             gross_pnl = (execution.price - position.average_entry) * position.quantity
             total_fees = position.fee_total + execution.commission_amount
@@ -295,6 +409,39 @@ class CryptoBotWorker:
             }
         )
 
+    def _persist_execution_failure(
+        self,
+        bot: BotSettingsRecord,
+        signal_id: str,
+        symbol: str,
+        side: str,
+        quantity: float,
+        market_price: float,
+        exc: Exception,
+    ) -> None:
+        LOGGER.exception("Execution failed for %s %s", side, symbol)
+        severity = "warning"
+        event_type = "execution_failed"
+        if isinstance(exc, BinanceQuantityError):
+            event_type = "execution_blocked"
+        self._repo.insert_risk_event(
+            {
+                "user_id": bot.user_id,
+                "event_type": event_type,
+                "severity": severity,
+                "mode": bot.actual_mode,
+                "symbol": symbol,
+                "message": self._safe_error_message(exc),
+                "details": {
+                    "signal_id": signal_id,
+                    "side": side,
+                    "quantity": quantity,
+                    "market_price": market_price,
+                    **self._exception_details(exc),
+                },
+            }
+        )
+
     def _update_daily_metrics(
         self,
         user_id: str,
@@ -325,7 +472,7 @@ class CryptoBotWorker:
         )
         self._repo.upsert_daily_metrics(metric)
 
-    def _can_open_position(self, bot: BotSettingsRecord, market_price: float) -> tuple[bool, str]:
+    def _can_open_position(self, bot: BotSettingsRecord, symbol: str, market_price: float) -> tuple[bool, str]:
         if bot.actual_mode == "live" and not self._settings.allow_live_trading:
             return False, "ALLOW_LIVE_TRADING=false blocks live mode."
 
@@ -335,7 +482,10 @@ class CryptoBotWorker:
 
         trade_notional = self._trade_notional(bot)
         starting_balance = self._starting_balance(bot)
-        exposure_now = sum(position.quantity * market_price for position in open_positions)
+        exposure_now = 0.0
+        for position in open_positions:
+            position_price = market_price if position.symbol == symbol else self._binance.get_last_price(position.symbol)
+            exposure_now += position.quantity * position_price
         symbol_exposure_pct = (trade_notional / starting_balance) * 100
         total_exposure_pct = ((exposure_now + trade_notional) / starting_balance) * 100
 
@@ -421,6 +571,31 @@ class CryptoBotWorker:
         for position in positions:
             signal_stub = type("SignalStub", (), {"symbol": position.symbol, "predicted_direction": "sell"})()
             self._maybe_execute(bot, position.signal_id or "", signal_stub, position, latest_prices[position.symbol])
+
+    def _estimated_round_trip_cost_bps(self, bot: BotSettingsRecord) -> float:
+        if bot.actual_mode == "paper":
+            fee_bps = self._settings.paper_fee_rate * 10000
+            slippage_bps = self._settings.paper_slippage_bps
+        else:
+            fee_bps = self._settings.live_fee_rate * 10000
+            slippage_bps = self._settings.live_slippage_bps
+        return (fee_bps * 2) + (slippage_bps * 2) + self._settings.estimated_spread_bps
+
+    @staticmethod
+    def _safe_error_message(exc: Exception) -> str:
+        if isinstance(exc, BinanceQuantityError):
+            return str(exc)
+        message = str(exc)
+        if "key=" in message:
+            return message.split("key=", maxsplit=1)[0] + "key=<redacted>"
+        return message[:500]
+
+    @staticmethod
+    def _exception_details(exc: Exception) -> dict[str, Any]:
+        details: dict[str, Any] = {"error_type": type(exc).__name__}
+        if isinstance(exc, BinanceQuantityError):
+            details.update(exc.details)
+        return details
 
     def _starting_balance(self, bot: BotSettingsRecord) -> float:
         return bot.paper_starting_balance if bot.actual_mode == "paper" else bot.live_starting_balance

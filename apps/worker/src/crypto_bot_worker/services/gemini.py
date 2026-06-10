@@ -60,12 +60,19 @@ class GeminiResearchService:
             text = raw["candidates"][0]["content"]["parts"][0]["text"]
             parsed = json.loads(text)
             return LlmAssessment.model_validate({**parsed, "raw_response": raw})
+        except httpx.HTTPStatusError as exc:
+            LOGGER.warning("Gemini research filter failed: status=%s model=%s", exc.response.status_code, self._model)
+            return LlmAssessment(
+                sentiment="neutral",
+                risk_flag=False,
+                confidence=0.0,
+                one_sentence_reason=f"Gemini returned HTTP {exc.response.status_code}; rules-only decision kept.",
+            )
         except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("Gemini research filter failed: %s", exc)
+            LOGGER.warning("Gemini research filter failed: %s", type(exc).__name__)
             return LlmAssessment(
                 sentiment="neutral",
                 risk_flag=False,
                 confidence=0.0,
                 one_sentence_reason="Gemini call failed; rules-only decision kept.",
             )
-

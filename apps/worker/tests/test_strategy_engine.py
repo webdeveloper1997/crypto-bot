@@ -38,6 +38,23 @@ def test_strategy_builds_buy_signal_in_clean_trend() -> None:
     assert signal.confidence > 0.5
 
 
+def test_strategy_blocks_trade_when_expected_move_does_not_clear_costs() -> None:
+    engine = StrategyEngine()
+    signal = engine.build_signal(
+        "BTCUSDT",
+        "1m",
+        make_trending_candles(),
+        has_open_position=False,
+        estimated_round_trip_cost_bps=120,
+        min_profit_buffer_bps=20,
+        min_expected_move_bps=140,
+    )
+
+    assert signal.predicted_direction == "hold"
+    assert signal.confidence == 0
+    assert "expected_move_below_required_edge" in signal.entry_plan["failed_reasons"]
+
+
 def test_llm_filter_can_veto_buy_signal() -> None:
     engine = StrategyEngine()
     signal = engine.build_signal("BTCUSDT", "1m", make_trending_candles(), has_open_position=False)

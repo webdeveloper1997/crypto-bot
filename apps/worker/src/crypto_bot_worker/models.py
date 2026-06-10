@@ -39,7 +39,7 @@ class SignalDecision(BaseModel):
     entry_plan: dict[str, Any] = Field(default_factory=dict)
     stop_plan: dict[str, Any] = Field(default_factory=dict)
     take_profit_plan: dict[str, Any] = Field(default_factory=dict)
-    strategy_version: str = "intraday-rules-ml-v1"
+    strategy_version: str = "intraday-rules-cost-managed-v2"
     llm_assessment: LlmAssessment | None = None
 
 

@@ -91,6 +91,14 @@ class SupabaseRepository:
         )
         return response.data[0]["id"]
 
+    def get_signal(self, signal_id: str) -> dict[str, Any] | None:
+        if not signal_id:
+            return None
+        response = self._client.table("signals").select("*").eq("id", signal_id).limit(1).execute()
+        if not response.data:
+            return None
+        return response.data[0]
+
     def update_signal_outcome(self, signal_id: str, payload: dict[str, Any]) -> None:
         self._client.table("signals").update(payload).eq("id", signal_id).execute()
 
@@ -209,4 +217,3 @@ class SupabaseRepository:
 
     def insert_equity_snapshot(self, payload: dict[str, Any]) -> None:
         self._client.table("equity_snapshots").insert(payload).execute()
-
