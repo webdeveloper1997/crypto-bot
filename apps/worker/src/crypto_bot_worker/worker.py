@@ -23,7 +23,7 @@ class CryptoBotWorker:
         self._binance = BinanceService(settings)
         self._paper_broker = PaperBroker(settings)
         self._binance_broker = BinanceBroker(self._binance)
-        self._research = GeminiResearchService(settings)
+        self._research = GeminiResearchService(settings, self._repo)
         self._strategy = StrategyEngine()
 
     def run_forever(self, once: bool = False) -> None:
@@ -100,6 +100,7 @@ class CryptoBotWorker:
                 )
 
     def _process_bot(self, bot: BotSettingsRecord) -> None:
+        self._research.sync_keys(bot.user_id)
         if not bot.is_running:
             self._snapshot_equity(bot, {})
             return
@@ -161,16 +162,16 @@ class CryptoBotWorker:
             max_entry_atr_bps=self._settings.max_entry_atr_bps,
             min_reward_risk=self._settings.min_reward_risk,
         )
-        llm_assessment = self._maybe_analyze(base_signal, candles)
+        llm_assessment = self._maybe_analyze(bot.user_id, base_signal, candles)
         signal = self._strategy.apply_llm_filter(base_signal, llm_assessment)
         llm_analysis_id = self._persist_llm_analysis(bot, symbol, llm_assessment)
         signal_id = self._persist_signal(bot, signal, llm_analysis_id)
         return self._maybe_execute(bot, signal_id, signal, position, market_price), market_price
 
-    def _maybe_analyze(self, signal, candles) -> LlmAssessment:
+    def _maybe_analyze(self, user_id: str, signal, candles) -> LlmAssessment:
         if signal.predicted_direction == "hold":
             return LlmAssessment(one_sentence_reason="No actionable signal; LLM skipped.")
-        return self._research.analyze_signal(signal, candles)
+        return self._research.analyze_signal(user_id, signal, candles)
 
     def _persist_llm_analysis(self, bot: BotSettingsRecord, symbol: str, assessment: LlmAssessment) -> str | None:
         if not assessment.raw_response:

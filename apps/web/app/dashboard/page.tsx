@@ -5,6 +5,7 @@ import { type BotMode } from "@crypto-bot/shared";
 
 import { AuthGate } from "@/components/auth/auth-gate";
 import { ActivityPanels } from "@/components/dashboard/activity-panels";
+import { GeminiQuotaPanel } from "@/components/dashboard/gemini-quota-panel";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ModeControl } from "@/components/dashboard/mode-control";
 import { PerformanceCharts } from "@/components/dashboard/performance-charts";
@@ -69,6 +70,8 @@ export default function DashboardPage() {
     closedPositions,
     riskEvents,
     commands,
+    geminiKeys,
+    geminiUsageEvents,
     summary,
     isLoading,
     error,
@@ -252,6 +255,10 @@ export default function DashboardPage() {
 
         <div className="mt-6">
           <PerformanceCharts equitySnapshots={equitySnapshots} dailyMetrics={dailyMetrics} />
+        </div>
+
+        <div className="mt-6">
+          <GeminiQuotaPanel keys={geminiKeys} usageEvents={geminiUsageEvents} />
         </div>
 
         <div className="mt-6">

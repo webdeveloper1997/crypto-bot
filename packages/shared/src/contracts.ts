@@ -6,11 +6,15 @@ export const BOT_MODES = ["paper", "testnet", "live"] as const;
 export const BOT_COMMAND_TYPES = ["switch_mode", "start_bot", "stop_bot", "flatten_all", "reconcile"] as const;
 export const SIGNAL_DIRECTIONS = ["buy", "sell", "hold"] as const;
 export const RISK_SEVERITIES = ["info", "warning", "critical"] as const;
+export const GEMINI_KEY_STATUSES = ["ready", "success", "rate_limited", "error", "disabled"] as const;
+export const GEMINI_USAGE_STATUSES = ["success", "rate_limited", "error", "skipped"] as const;
 
 export type BotMode = (typeof BOT_MODES)[number];
 export type BotCommandType = (typeof BOT_COMMAND_TYPES)[number];
 export type SignalDirection = (typeof SIGNAL_DIRECTIONS)[number];
 export type RiskSeverity = (typeof RISK_SEVERITIES)[number];
+export type GeminiKeyStatus = (typeof GEMINI_KEY_STATUSES)[number];
+export type GeminiUsageStatus = (typeof GEMINI_USAGE_STATUSES)[number];
 
 export const botCommandPayloadSchema = z.object({
   targetMode: z.enum(BOT_MODES).optional(),
@@ -147,6 +151,50 @@ export const riskEventSchema = z.object({
   resolved_at: isoDatetimeSchema.nullable().optional()
 });
 
+export const geminiKeyStatusSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  key_label: z.string(),
+  key_hash: z.string(),
+  model: z.string(),
+  daily_request_limit: z.number().int().nonnegative(),
+  minute_request_limit: z.number().int().nonnegative(),
+  daily_token_limit: z.number().int().nonnegative(),
+  token_minute_limit: z.number().int().nonnegative(),
+  priority: z.number().int(),
+  is_active: z.boolean(),
+  last_status: z.enum(GEMINI_KEY_STATUSES),
+  last_status_code: z.number().int().nullable().optional(),
+  last_error: z.string().nullable().optional(),
+  exhausted_until: isoDatetimeSchema.nullable().optional(),
+  last_used_at: isoDatetimeSchema.nullable().optional(),
+  created_at: isoDatetimeSchema,
+  updated_at: isoDatetimeSchema
+});
+
+export const geminiUsageEventSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  key_label: z.string(),
+  key_hash: z.string(),
+  model: z.string(),
+  request_kind: z.string(),
+  symbol: z.string().nullable().optional(),
+  timeframe: z.string().nullable().optional(),
+  signal_id: z.string().uuid().nullable().optional(),
+  status: z.enum(GEMINI_USAGE_STATUSES),
+  status_code: z.number().int().nullable().optional(),
+  request_count: z.number().int().nonnegative(),
+  prompt_tokens: z.number().int().nonnegative(),
+  candidates_tokens: z.number().int().nonnegative(),
+  total_tokens: z.number().int().nonnegative(),
+  latency_ms: z.number().int().nonnegative().nullable().optional(),
+  quota_day: z.string(),
+  error_type: z.string().nullable().optional(),
+  error_message: z.string().nullable().optional(),
+  created_at: isoDatetimeSchema
+});
+
 export type BotCommandPayload = z.infer<typeof botCommandPayloadSchema>;
 export type BotCommand = z.infer<typeof botCommandSchema>;
 export type BotSettings = z.infer<typeof botSettingsSchema>;
@@ -156,3 +204,5 @@ export type SignalRecord = z.infer<typeof signalSchema>;
 export type FillRecord = z.infer<typeof fillSchema>;
 export type PositionRecord = z.infer<typeof positionSchema>;
 export type RiskEvent = z.infer<typeof riskEventSchema>;
+export type GeminiKeyStatusRecord = z.infer<typeof geminiKeyStatusSchema>;
+export type GeminiUsageEvent = z.infer<typeof geminiUsageEventSchema>;

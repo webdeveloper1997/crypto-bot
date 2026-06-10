@@ -16,6 +16,7 @@ __pycache__/
 *.pyd
 *.sqlite3
 *.log
+keys.txt
 *.pem
 *.key
 *.crt

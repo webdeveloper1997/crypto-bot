@@ -77,6 +77,35 @@ class SupabaseRepository:
         )
         return response.data[0]["id"]
 
+    def upsert_gemini_key_status(self, user_id: str, payload: dict[str, Any]) -> None:
+        self._client.table("gemini_api_keys").upsert(
+            {
+                "user_id": user_id,
+                **payload,
+            },
+            on_conflict="user_id,key_label",
+        ).execute()
+
+    def insert_gemini_usage_event(self, payload: dict[str, Any]) -> None:
+        self._client.table("gemini_usage_events").insert(payload).execute()
+
+    def list_gemini_usage_events(
+        self,
+        user_id: str,
+        quota_day: date,
+        since: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        query = (
+            self._client.table("gemini_usage_events")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("quota_day", quota_day.isoformat())
+        )
+        if since is not None:
+            query = query.gte("created_at", since.isoformat())
+        response = query.execute()
+        return list(response.data or [])
+
     def insert_signal(self, user_id: str, llm_analysis_id: str | None, payload: dict[str, Any]) -> str:
         response = (
             self._client.table("signals")

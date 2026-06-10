@@ -11,6 +11,8 @@ import {
   dailyMetricSchema,
   equitySnapshotSchema,
   fillSchema,
+  geminiKeyStatusSchema,
+  geminiUsageEventSchema,
   positionSchema,
   riskEventSchema,
   signalSchema,
@@ -31,6 +33,15 @@ async function fetchSingle<TInput, TParsed>(
   }
 
   return parser(result.data);
+}
+
+function getPacificQuotaDay(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Los_Angeles",
+    year: "numeric"
+  }).format(new Date());
 }
 
 export function useBotDashboard(userId?: string) {
@@ -226,6 +237,43 @@ export function useBotDashboard(userId?: string) {
       )
   });
 
+  const quotaDay = getPacificQuotaDay();
+
+  const geminiKeysQuery = useQuery({
+    queryKey: ["gemini-api-keys", userId],
+    enabled,
+    refetchInterval: 15000,
+    queryFn: () =>
+      fetchSingle(
+        client
+          .from("gemini_api_keys")
+          .select("*")
+          .eq("user_id", userId)
+          .order("priority", { ascending: true })
+          .order("key_label", { ascending: true }),
+        (value) => geminiKeyStatusSchema.array().parse(value),
+        "gemini_api_keys"
+      )
+  });
+
+  const geminiUsageQuery = useQuery({
+    queryKey: ["gemini-usage-events", userId, quotaDay],
+    enabled,
+    refetchInterval: 15000,
+    queryFn: () =>
+      fetchSingle(
+        client
+          .from("gemini_usage_events")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("quota_day", quotaDay)
+          .order("created_at", { ascending: false })
+          .limit(250),
+        (value) => geminiUsageEventSchema.array().parse(value),
+        "gemini_usage_events"
+      )
+  });
+
   const enqueueCommand = useMutation({
     mutationFn: async (input: { commandType: BotCommandType; payload?: BotCommandPayload }): Promise<BotCommand> => {
       if (!userId) {
@@ -312,6 +360,8 @@ export function useBotDashboard(userId?: string) {
     closedPositions: closedPositionsQuery.data ?? [],
     riskEvents: riskEventsQuery.data ?? [],
     commands: commandsQuery.data ?? [],
+    geminiKeys: geminiKeysQuery.data ?? [],
+    geminiUsageEvents: geminiUsageQuery.data ?? [],
     isLoading:
       settingsQuery.isLoading ||
       equityQuery.isLoading ||
@@ -321,7 +371,9 @@ export function useBotDashboard(userId?: string) {
       positionsQuery.isLoading ||
       closedPositionsQuery.isLoading ||
       riskEventsQuery.isLoading ||
-      commandsQuery.isLoading,
+      commandsQuery.isLoading ||
+      geminiKeysQuery.isLoading ||
+      geminiUsageQuery.isLoading,
     error:
       settingsQuery.error ??
       equityQuery.error ??
@@ -331,7 +383,9 @@ export function useBotDashboard(userId?: string) {
       positionsQuery.error ??
       closedPositionsQuery.error ??
       riskEventsQuery.error ??
-      commandsQuery.error,
+      commandsQuery.error ??
+      geminiKeysQuery.error ??
+      geminiUsageQuery.error,
     enqueueCommand,
     updateSettings,
     summary
